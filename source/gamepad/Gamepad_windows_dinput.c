@@ -775,6 +775,19 @@ const DIDATAFORMAT c_dfDIJoystick2 = {
 };
 #endif
 
+static int compareOffset(const void * e1, const void * e2) {
+	const DWORD * o1 = e1;
+	const DWORD * o2 = e2;
+
+	if (*o1 < *o2) {
+		return -1;
+	} else if (*o1 > *o2) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVOID context) {
 	struct Gamepad_device * deviceRecord;
 	struct Gamepad_devicePrivate * deviceRecordPrivate;
@@ -853,10 +866,13 @@ static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVO
 	deviceRecordPrivate->hatOffsets = calloc(sizeof(DWORD), deviceRecord->numHats);
 	deviceRecord->numAxes = 0;
 	IDirectInputDevice_EnumObjects(di8Device, enumAxesCallback, deviceRecord, DIDFT_AXIS);
+	qsort(deviceRecordPrivate->axisOffsets, deviceRecord->numAxes, sizeof(DWORD), compareOffset);
 	deviceRecord->numButtons = 0;
 	IDirectInputDevice_EnumObjects(di8Device, enumButtonsCallback, deviceRecord, DIDFT_BUTTON);
+	qsort(deviceRecordPrivate->buttonOffsets, deviceRecord->numButtons, sizeof(DWORD), compareOffset);
 	deviceRecord->numHats = 0;
 	IDirectInputDevice_EnumObjects(di8Device, enumHatsCallback, deviceRecord, DIDFT_POV);
+	qsort(deviceRecordPrivate->hatOffsets, deviceRecord->numHats, sizeof(DWORD), compareOffset);
 	devices = realloc(devices, sizeof(struct Gamepad_device *) * (numDevices + 1));
 	devices[numDevices++] = deviceRecord;
 	
