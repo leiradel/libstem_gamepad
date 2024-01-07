@@ -29,11 +29,13 @@ void (* Gamepad_deviceRemoveCallback)(struct Gamepad_device * device, void * con
 void (* Gamepad_buttonDownCallback)(struct Gamepad_device * device, unsigned int buttonID, double timestamp, void * context) = NULL;
 void (* Gamepad_buttonUpCallback)(struct Gamepad_device * device, unsigned int buttonID, double timestamp, void * context) = NULL;
 void (* Gamepad_axisMoveCallback)(struct Gamepad_device * device, unsigned int buttonID, float value, float lastValue, double timestamp, void * context) = NULL;
+void (* Gamepad_hatChangeCallback)(struct Gamepad_device * device, unsigned int hatID, char value, char lastValue, double timestamp, void * context);
 void * Gamepad_deviceAttachContext = NULL;
 void * Gamepad_deviceRemoveContext = NULL;
 void * Gamepad_buttonDownContext = NULL;
 void * Gamepad_buttonUpContext = NULL;
 void * Gamepad_axisMoveContext = NULL;
+void * Gamepad_hatChangeContext = NULL;
 
 void Gamepad_deviceAttachFunc(void (* callback)(struct Gamepad_device * device, void * context), void * context) {
 	Gamepad_deviceAttachCallback = callback;
@@ -58,4 +60,9 @@ void Gamepad_buttonUpFunc(void (* callback)(struct Gamepad_device * device, unsi
 void Gamepad_axisMoveFunc(void (* callback)(struct Gamepad_device * device, unsigned int axisID, float value, float lastValue, double timestamp, void * context), void * context) {
 	Gamepad_axisMoveCallback = callback;
 	Gamepad_axisMoveContext = context;
+}
+
+void Gamepad_hatChangeFunc(void (* callback)(struct Gamepad_device * device, unsigned int hatID, char value, char lastValue, double timestamp, void * context), void * context) {
+	Gamepad_hatChangeCallback = callback;
+	Gamepad_hatChangeContext = context;
 }

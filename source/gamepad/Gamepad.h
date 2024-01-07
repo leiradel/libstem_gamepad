@@ -52,12 +52,18 @@ struct Gamepad_device {
 	
 	// Number of button elements belonging to the device
 	unsigned int numButtons;
+
+	// Number of hat elements belonging to the device
+	unsigned int numHats;
 	
 	// Array[numAxes] of values representing the current state of each axis, in the range [-1..1]
 	float * axisStates;
 	
 	// Array[numButtons] of values representing the current state of each button
 	bool * buttonStates;
+
+	// Array[numHats] of values representing the current state of each hat
+	char * hatStates;
 	
 	// Platform-specific device data storage. Don't touch unless you know what you're doing and don't
 	// mind your code breaking in future versions of this library.
@@ -127,6 +133,12 @@ void Gamepad_buttonUpFunc(void (* callback)(struct Gamepad_device * device, unsi
    thread from which Gamepad_processEvents() was called. Calling this function with a NULL
    argument will stop any previously registered callback from being called subsequently.  */
 void Gamepad_axisMoveFunc(void (* callback)(struct Gamepad_device * device, unsigned int axisID, float value, float lastValue, double timestamp, void * context), void * context);
+
+/* Registers a function to be called whenever a hat on any attached device changes. The
+   specified function will be called only during calls to Gamepad_processEvents(), in the
+   thread from which Gamepad_processEvents() was called. Calling this function with a NULL
+   argument will stop any previously registered callback from being called subsequently.  */
+void Gamepad_hatChangeFunc(void (* callback)(struct Gamepad_device * device, unsigned int hatID, char value, char lastValue, double timestamp, void * context), void * context);
 
 #ifdef __cplusplus
 }

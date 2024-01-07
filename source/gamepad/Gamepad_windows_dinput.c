@@ -184,12 +184,6 @@ typedef struct {
 	XINPUT_GAMEPAD_EX Gamepad;
 } XINPUT_STATE_EX;
 
-struct diAxisInfo {
-	DWORD offset;
-	bool isPOV;
-	bool isPOVSecondAxis;
-};
-
 struct Gamepad_devicePrivate {
 	bool isXInput;
 	
@@ -198,9 +192,9 @@ struct Gamepad_devicePrivate {
 	IDirectInputDevice8 * deviceInterface;
 	bool buffered;
 	unsigned int sliderCount;
-	unsigned int povCount;
-	struct diAxisInfo * axisInfo;
+	DWORD * axisOffsets;
 	DWORD * buttonOffsets;
+	DWORD * hatOffsets;
 	
 	// XInput only
 	unsigned int playerIndex;
@@ -275,14 +269,16 @@ static void disposeDevice(struct Gamepad_device * deviceRecord) {
 	
 	if (!deviceRecordPrivate->isXInput) {
 		IDirectInputDevice8_Release(deviceRecordPrivate->deviceInterface);
-		free(deviceRecordPrivate->axisInfo);
+		free(deviceRecordPrivate->axisOffsets);
 		free(deviceRecordPrivate->buttonOffsets);
+		free(deviceRecordPrivate->hatOffsets);
 		free((void *) deviceRecord->description);
 	}
 	free(deviceRecordPrivate);
 	
 	free(deviceRecord->axisStates);
 	free(deviceRecord->buttonStates);
+	free(deviceRecord->hatStates);
 	
 	free(deviceRecord);
 }
@@ -505,9 +501,6 @@ static BOOL CALLBACK countAxesCallback(LPCDIDEVICEOBJECTINSTANCE instance, LPVOI
 	struct Gamepad_device * deviceRecord = context;
 	
 	deviceRecord->numAxes++;
-	if (instance->dwType & DIDFT_POV) {
-		deviceRecord->numAxes++;
-	}
 	return DIENUM_CONTINUE;
 }
 
@@ -518,70 +511,65 @@ static BOOL CALLBACK countButtonsCallback(LPCDIDEVICEOBJECTINSTANCE instance, LP
 	return DIENUM_CONTINUE;
 }
 
+static BOOL CALLBACK countHatsCallback(LPCDIDEVICEOBJECTINSTANCE instance, LPVOID context) {
+	struct Gamepad_device* deviceRecord = context;
+
+	deviceRecord->numHats++;
+	return DIENUM_CONTINUE;
+}
+
 #define AXIS_MIN -32768
 #define AXIS_MAX 32767
 
 static BOOL CALLBACK enumAxesCallback(LPCDIDEVICEOBJECTINSTANCE instance, LPVOID context) {
+	DWORD offset;
+	DIPROPRANGE range;
+	DIPROPDWORD deadZone;
+	HRESULT result;
+
 	struct Gamepad_device * deviceRecord = context;
 	struct Gamepad_devicePrivate * deviceRecordPrivate = deviceRecord->privateData;
-	DWORD offset;
 	
-	deviceRecord->numAxes++;
-	if (instance->dwType & DIDFT_POV) {
-		offset = DIJOFS_POV(deviceRecordPrivate->povCount);
-		deviceRecordPrivate->axisInfo[deviceRecord->numAxes - 1].offset = offset;
-		deviceRecordPrivate->axisInfo[deviceRecord->numAxes - 1].isPOV = true;
-		deviceRecord->numAxes++;
-		deviceRecordPrivate->axisInfo[deviceRecord->numAxes - 1].offset = offset;
-		deviceRecordPrivate->axisInfo[deviceRecord->numAxes - 1].isPOV = true;
-		deviceRecordPrivate->povCount++;
-		
+	if (!memcmp(&instance->guidType, &GUID_XAxis, sizeof(instance->guidType))) {
+		offset = DIJOFS_X;
+	} else if (!memcmp(&instance->guidType, &GUID_YAxis, sizeof(instance->guidType))) {
+		offset = DIJOFS_Y;
+	} else if (!memcmp(&instance->guidType, &GUID_ZAxis, sizeof(instance->guidType))) {
+		offset = DIJOFS_Z;
+	} else if (!memcmp(&instance->guidType, &GUID_RxAxis, sizeof(instance->guidType))) {
+		offset = DIJOFS_RX;
+	} else if (!memcmp(&instance->guidType, &GUID_RyAxis, sizeof(instance->guidType))) {
+		offset = DIJOFS_RY;
+	} else if (!memcmp(&instance->guidType, &GUID_RzAxis, sizeof(instance->guidType))) {
+		offset = DIJOFS_RZ;
+	} else if (!memcmp(&instance->guidType, &GUID_Slider, sizeof(instance->guidType))) {
+		offset = DIJOFS_SLIDER(deviceRecordPrivate->sliderCount++);
 	} else {
-		DIPROPRANGE range;
-		DIPROPDWORD deadZone;
-		HRESULT result;
+		offset = -1;
+	}
+	deviceRecordPrivate->axisOffsets[deviceRecord->numAxes] = offset;
+	deviceRecord->numAxes++;
+
+	range.diph.dwSize = sizeof(range);
+	range.diph.dwHeaderSize = sizeof(range.diph);
+	range.diph.dwObj = instance->dwType;
+	range.diph.dwHow = DIPH_BYID;
+	range.lMin = AXIS_MIN;
+	range.lMax = AXIS_MAX;
 		
-		if (!memcmp(&instance->guidType, &GUID_XAxis, sizeof(instance->guidType))) {
-			offset = DIJOFS_X;
-		} else if (!memcmp(&instance->guidType, &GUID_YAxis, sizeof(instance->guidType))) {
-			offset = DIJOFS_Y;
-		} else if (!memcmp(&instance->guidType, &GUID_ZAxis, sizeof(instance->guidType))) {
-			offset = DIJOFS_Z;
-		} else if (!memcmp(&instance->guidType, &GUID_RxAxis, sizeof(instance->guidType))) {
-			offset = DIJOFS_RX;
-		} else if (!memcmp(&instance->guidType, &GUID_RyAxis, sizeof(instance->guidType))) {
-			offset = DIJOFS_RY;
-		} else if (!memcmp(&instance->guidType, &GUID_RzAxis, sizeof(instance->guidType))) {
-			offset = DIJOFS_RZ;
-		} else if (!memcmp(&instance->guidType, &GUID_Slider, sizeof(instance->guidType))) {
-			offset = DIJOFS_SLIDER(deviceRecordPrivate->sliderCount++);
-		} else {
-			offset = -1;
-		}
-		deviceRecordPrivate->axisInfo[deviceRecord->numAxes - 1].offset = offset;
-		deviceRecordPrivate->axisInfo[deviceRecord->numAxes - 1].isPOV = false;
+	result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_RANGE, &range.diph);
+	if (result != DI_OK) {
+		fprintf(stderr, "Warning: IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
+	}
 		
-		range.diph.dwSize = sizeof(range);
-		range.diph.dwHeaderSize = sizeof(range.diph);
-		range.diph.dwObj = instance->dwType;
-		range.diph.dwHow = DIPH_BYID;
-		range.lMin = AXIS_MIN;
-		range.lMax = AXIS_MAX;
-		
-		result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_RANGE, &range.diph);
-		if (result != DI_OK) {
-			fprintf(stderr, "Warning: IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
-		}
-		
-		deadZone.diph.dwSize = sizeof(deadZone);
-		deadZone.diph.dwHeaderSize = sizeof(deadZone.diph);
-		deadZone.diph.dwObj = instance->dwType;
-		deadZone.diph.dwHow = DIPH_BYID;
-		deadZone.dwData = 0;
-		result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_DEADZONE, &deadZone.diph);
-		if (result != DI_OK) {
-			fprintf(stderr, "Warning: IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
-		}
+	deadZone.diph.dwSize = sizeof(deadZone);
+	deadZone.diph.dwHeaderSize = sizeof(deadZone.diph);
+	deadZone.diph.dwObj = instance->dwType;
+	deadZone.diph.dwHow = DIPH_BYID;
+	deadZone.dwData = 0;
+	result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_DEADZONE, &deadZone.diph);
+	if (result != DI_OK) {
+		fprintf(stderr, "Warning: IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
 	}
 	return DIENUM_CONTINUE;
 }
@@ -592,6 +580,15 @@ static BOOL CALLBACK enumButtonsCallback(LPCDIDEVICEOBJECTINSTANCE instance, LPV
 	
 	deviceRecordPrivate->buttonOffsets[deviceRecord->numButtons] = DIJOFS_BUTTON(deviceRecord->numButtons);
 	deviceRecord->numButtons++;
+	return DIENUM_CONTINUE;
+}
+
+static BOOL CALLBACK enumHatsCallback(LPCDIDEVICEOBJECTINSTANCE instance, LPVOID context) {
+	struct Gamepad_device* deviceRecord = context;
+	struct Gamepad_devicePrivate* deviceRecordPrivate = deviceRecord->privateData;
+
+	deviceRecordPrivate->hatOffsets[deviceRecord->numHats] = DIJOFS_POV(deviceRecord->numHats);
+	deviceRecord->numHats++;
 	return DIENUM_CONTINUE;
 }
 
@@ -837,24 +834,29 @@ static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVO
 	deviceRecordPrivate->deviceInterface = di8Device;
 	deviceRecordPrivate->buffered = buffered;
 	deviceRecordPrivate->sliderCount = 0;
-	deviceRecordPrivate->povCount = 0;
 	deviceRecord->privateData = deviceRecordPrivate;
 	deviceRecord->deviceID = nextDeviceID++;
 	deviceRecord->description = strdup(instance->tszProductName);
 	deviceRecord->vendorID = instance->guidProduct.Data1 & 0xFFFF;
 	deviceRecord->productID = instance->guidProduct.Data1 >> 16 & 0xFFFF;
 	deviceRecord->numAxes = 0;
-	IDirectInputDevice_EnumObjects(di8Device, countAxesCallback, deviceRecord, DIDFT_AXIS | DIDFT_POV);
+	IDirectInputDevice_EnumObjects(di8Device, countAxesCallback, deviceRecord, DIDFT_AXIS);
 	deviceRecord->numButtons = 0;
 	IDirectInputDevice_EnumObjects(di8Device, countButtonsCallback, deviceRecord, DIDFT_BUTTON);
+	deviceRecord->numHats = 0;
+	IDirectInputDevice_EnumObjects(di8Device, countHatsCallback, deviceRecord, DIDFT_POV);
 	deviceRecord->axisStates = calloc(sizeof(float), deviceRecord->numAxes);
 	deviceRecord->buttonStates = calloc(sizeof(bool), deviceRecord->numButtons);
-	deviceRecordPrivate->axisInfo = calloc(sizeof(struct diAxisInfo), deviceRecord->numAxes);
+	deviceRecord->hatStates = calloc(sizeof(char), deviceRecord->numHats);
+	deviceRecordPrivate->axisOffsets = calloc(sizeof(DWORD), deviceRecord->numAxes);
 	deviceRecordPrivate->buttonOffsets = calloc(sizeof(DWORD), deviceRecord->numButtons);
+	deviceRecordPrivate->hatOffsets = calloc(sizeof(DWORD), deviceRecord->numHats);
 	deviceRecord->numAxes = 0;
-	IDirectInputDevice_EnumObjects(di8Device, enumAxesCallback, deviceRecord, DIDFT_AXIS | DIDFT_POV);
+	IDirectInputDevice_EnumObjects(di8Device, enumAxesCallback, deviceRecord, DIDFT_AXIS);
 	deviceRecord->numButtons = 0;
 	IDirectInputDevice_EnumObjects(di8Device, enumButtonsCallback, deviceRecord, DIDFT_BUTTON);
+	deviceRecord->numHats = 0;
+	IDirectInputDevice_EnumObjects(di8Device, enumHatsCallback, deviceRecord, DIDFT_POV);
 	devices = realloc(devices, sizeof(struct Gamepad_device *) * (numDevices + 1));
 	devices[numDevices++] = deviceRecord;
 	
@@ -963,49 +965,43 @@ static void updateAxisValue(struct Gamepad_device * device, unsigned int axisInd
 	updateAxisValueFloat(device, axisIndex, (ivalue - AXIS_MIN) / (float) (AXIS_MAX - AXIS_MIN) * 2.0f - 1.0f, timestamp);
 }
 
-#define POV_UP 0
-#define POV_RIGHT 9000
-#define POV_DOWN 18000
-#define POV_LEFT 27000
+static void updateHatValue(struct Gamepad_device* device, unsigned int hatIndex, DWORD value, double timestamp) {
+	static const char states[] = {
+		0x01, // up
+		0x03, // up+right
+		0x02, // right
+		0x06, // right+down
+		0x04, // down
+		0x0c, // down+left
+		0x08, // left
+		0x09  // left+up
+	};
 
-static void povToXY(DWORD pov, float * outX, float * outY) {
-	if (LOWORD(pov) == 0xFFFF) {
-		*outX = *outY = 0.0f;
-		
+	char lastValue;
+
+	lastValue = device->hatStates[hatIndex];
+
+	if (LOWORD(value) == 0xffff) {
+		value = 0;
 	} else {
-		if (pov > POV_UP && pov < POV_DOWN) {
-			*outX = 1.0f;
-			
-		} else if (pov > POV_DOWN) {
-			*outX = -1.0f;
-			
-		} else {
-			*outX = 0.0f;
+		value += 4500 / 2;
+		value %= 36000;
+		value /= 4500;
+		if (value >= 8) {
+			value = 0; // shouldn't happen
 		}
-		
-		if (pov > POV_LEFT || pov < POV_RIGHT) {
-			*outY = -1.0f;
-			
-		} else if (pov > POV_RIGHT && pov < POV_LEFT) {
-			*outY = 1.0f;
-			
-		} else {
-			*outY = 0.0f;
-		}
+		value = states[value];
 	}
-}
+	device->hatStates[hatIndex] = value;
 
-static void updatePOVAxisValues(struct Gamepad_device * device, unsigned int axisIndex, DWORD ivalue, double timestamp) {
-	float x = 0.0f, y = 0.0f;
-	
-	povToXY(ivalue, &x, &y);
-	updateAxisValueFloat(device, axisIndex, x, timestamp);
-	updateAxisValueFloat(device, axisIndex + 1, y, timestamp);
+	if (value != lastValue && Gamepad_hatChangeCallback != NULL) {
+		Gamepad_hatChangeCallback(device, hatIndex, value, lastValue, timestamp, Gamepad_axisMoveContext);
+	}
 }
 
 void Gamepad_processEvents() {
 	static bool inProcessEvents;
-	unsigned int deviceIndex, buttonIndex, axisIndex;
+	unsigned int deviceIndex, buttonIndex, axisIndex, hatIndex;
 	struct Gamepad_device * device;
 	struct Gamepad_devicePrivate * devicePrivate;
 	HRESULT result;
@@ -1097,19 +1093,20 @@ void Gamepad_processEvents() {
 						}
 					}
 					for (axisIndex = 0; axisIndex < device->numAxes; axisIndex++) {
-						if (events[eventIndex].dwOfs == devicePrivate->axisInfo[axisIndex].offset) {
-							if (devicePrivate->axisInfo[axisIndex].isPOV) {
-								updatePOVAxisValues(device, axisIndex, events[eventIndex].dwData, events[eventIndex].dwTimeStamp / 1000.0);
-								axisIndex++;
-							} else {
-								updateAxisValue(device, axisIndex, events[eventIndex].dwData, events[eventIndex].dwTimeStamp / 1000.0);
-							}
+						if (events[eventIndex].dwOfs == devicePrivate->axisOffsets[axisIndex]) {
+							updateAxisValue(device, axisIndex, events[eventIndex].dwData, events[eventIndex].dwTimeStamp / 1000.0);
+						}
+					}
+					for (hatIndex = 0; hatIndex < device->numHats; hatIndex++) {
+						if (events[eventIndex].dwOfs == devicePrivate->hatOffsets[hatIndex]) {
+							updateHatValue(device, hatIndex, events[eventIndex].dwData, events[eventIndex].dwTimeStamp / 1000.0);
 						}
 					}
 				}
 				
 			} else {
 				DIJOYSTATE2 state;
+				const double now = currentTime();
 				
 				result = IDirectInputDevice8_GetDeviceState(devicePrivate->deviceInterface, sizeof(DIJOYSTATE2), &state);
 				if (result == DIERR_INPUTLOST || result == DIERR_NOTACQUIRED) {
@@ -1124,50 +1121,46 @@ void Gamepad_processEvents() {
 				}
 				
 				for (buttonIndex = 0; buttonIndex < device->numButtons; buttonIndex++) {
-					updateButtonValue(device, buttonIndex, !!state.rgbButtons[buttonIndex], currentTime());
+					updateButtonValue(device, buttonIndex, !!state.rgbButtons[buttonIndex], now);
 				}
 				
 				for (axisIndex = 0; axisIndex < device->numAxes; axisIndex++) {
-					switch (devicePrivate->axisInfo[axisIndex].offset) {
+					switch (devicePrivate->axisOffsets[axisIndex]) {
 						case DIJOFS_X:
-							updateAxisValue(device, axisIndex, state.lX, currentTime());
+							updateAxisValue(device, axisIndex, state.lX, now);
 							break;
 						case DIJOFS_Y:
-							updateAxisValue(device, axisIndex, state.lY, currentTime());
+							updateAxisValue(device, axisIndex, state.lY, now);
 							break;
 						case DIJOFS_Z:
-							updateAxisValue(device, axisIndex, state.lZ, currentTime());
+							updateAxisValue(device, axisIndex, state.lZ, now);
 							break;
 						case DIJOFS_RX:
-							updateAxisValue(device, axisIndex, state.lRx, currentTime());
+							updateAxisValue(device, axisIndex, state.lRx, now);
 							break;
 						case DIJOFS_RY:
-							updateAxisValue(device, axisIndex, state.lRy, currentTime());
+							updateAxisValue(device, axisIndex, state.lRy, now);
 							break;
 						case DIJOFS_RZ:
-							updateAxisValue(device, axisIndex, state.lRz, currentTime());
+							updateAxisValue(device, axisIndex, state.lRz, now);
 							break;
 						case DIJOFS_SLIDER(0):
-							updateAxisValue(device, axisIndex, state.rglSlider[0], currentTime());
+							updateAxisValue(device, axisIndex, state.rglSlider[0], now);
 							break;
 						case DIJOFS_SLIDER(1):
-							updateAxisValue(device, axisIndex, state.rglSlider[1], currentTime());
+							updateAxisValue(device, axisIndex, state.rglSlider[1], now);
 							break;
 						case DIJOFS_POV(0):
-							updatePOVAxisValues(device, axisIndex, state.rgdwPOV[0], currentTime());
-							axisIndex++;
+							updateHatValue(device, axisIndex, state.rgdwPOV[0], now);
 							break;
 						case DIJOFS_POV(1):
-							updatePOVAxisValues(device, axisIndex, state.rgdwPOV[1], currentTime());
-							axisIndex++;
+							updateHatValue(device, axisIndex, state.rgdwPOV[1], now);
 							break;
 						case DIJOFS_POV(2):
-							updatePOVAxisValues(device, axisIndex, state.rgdwPOV[2], currentTime());
-							axisIndex++;
+							updateHatValue(device, axisIndex, state.rgdwPOV[2], now);
 							break;
 						case DIJOFS_POV(3):
-							updatePOVAxisValues(device, axisIndex, state.rgdwPOV[3], currentTime());
-							axisIndex++;
+							updateHatValue(device, axisIndex, state.rgdwPOV[3], now);
 							break;
 					}
 				}
