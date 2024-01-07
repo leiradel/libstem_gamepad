@@ -933,9 +933,11 @@ void Gamepad_detectDevices() {
 				deviceRecord->vendorID = 0x45E;
 				deviceRecord->productID = 0x28E;
 				deviceRecord->numAxes = 6;
-				deviceRecord->numButtons = 15;
+				deviceRecord->numButtons = 11;
+				deviceRecord->numHats = 1;
 				deviceRecord->axisStates = calloc(sizeof(float), deviceRecord->numAxes);
 				deviceRecord->buttonStates = calloc(sizeof(bool), deviceRecord->numButtons);
+				deviceRecord->hatStates = calloc(sizeof(char), deviceRecord->numHats);
 				devices = realloc(devices, sizeof(struct Gamepad_device *) * (numDevices + 1));
 				devices[numDevices++] = deviceRecord;
 				registeredXInputDevices[playerIndex] = deviceRecord;
@@ -1050,28 +1052,44 @@ void Gamepad_processEvents() {
 				xResult = XInputGetState_proc(devicePrivate->playerIndex, &state);
 			}
 			if (xResult == ERROR_SUCCESS) {
-				updateButtonValue(device, 0, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP), currentTime());
-				updateButtonValue(device, 1, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN), currentTime());
-				updateButtonValue(device, 2, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT), currentTime());
-				updateButtonValue(device, 3, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT), currentTime());
-				updateButtonValue(device, 4, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_START), currentTime());
-				updateButtonValue(device, 5, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK), currentTime());
-				updateButtonValue(device, 6, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB), currentTime());
-				updateButtonValue(device, 7, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB), currentTime());
-				updateButtonValue(device, 8, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER), currentTime());
-				updateButtonValue(device, 9, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER), currentTime());
-				updateButtonValue(device, 10, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_A), currentTime());
-				updateButtonValue(device, 11, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_B), currentTime());
-				updateButtonValue(device, 12, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_X), currentTime());
-				updateButtonValue(device, 13, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_Y), currentTime());
-				updateButtonValue(device, 14, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE), currentTime());
-				updateAxisValue(device, 0, state.Gamepad.sThumbLX, currentTime());
-				updateAxisValue(device, 1, state.Gamepad.sThumbLY, currentTime());
-				updateAxisValue(device, 2, state.Gamepad.sThumbRX, currentTime());
-				updateAxisValue(device, 3, state.Gamepad.sThumbRY, currentTime());
-				updateAxisValueFloat(device, 4, state.Gamepad.bLeftTrigger / 127.5f - 1.0f, currentTime());
-				updateAxisValueFloat(device, 5, state.Gamepad.bRightTrigger / 127.5f - 1.0f, currentTime());
-				
+				const double now = currentTime();
+
+				updateButtonValue(device, 0, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_A), now);
+				updateButtonValue(device, 1, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_B), now);
+				updateButtonValue(device, 2, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_X), now);
+				updateButtonValue(device, 3, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_Y), now);
+				updateButtonValue(device, 4, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER), now);
+				updateButtonValue(device, 5, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER), now);
+				updateButtonValue(device, 6, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK), now);
+				updateButtonValue(device, 7, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_START), now);
+				updateButtonValue(device, 8, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB), now);
+				updateButtonValue(device, 9, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB), now);
+				updateButtonValue(device, 10, !!(state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE), now);
+
+				updateAxisValue(device, 0, state.Gamepad.sThumbLX, now);
+				updateAxisValue(device, 1, state.Gamepad.sThumbLY, now);
+				updateAxisValueFloat(device, 2, state.Gamepad.bLeftTrigger / 127.5f - 1.0f, now);
+				updateAxisValue(device, 3, state.Gamepad.sThumbRX, now);
+				updateAxisValue(device, 4, state.Gamepad.sThumbRY, now);
+				updateAxisValueFloat(device, 5, state.Gamepad.bRightTrigger / 127.5f - 1.0f, now);
+
+				char hat = 0;
+				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) {
+					hat |= 0x01;
+				}
+				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
+					hat |= 0x02;
+				}
+				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
+					hat |= 0x04;
+				}
+				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
+					hat |= 0x08;
+				}
+				if (hat != device->hatStates[0] && Gamepad_hatChangeCallback != NULL) {
+					Gamepad_hatChangeCallback(device, hatIndex, hat, device->hatStates[0], now, Gamepad_axisMoveContext);
+				}
+				device->hatStates[0] = hat;
 			} else {
 				registeredXInputDevices[devicePrivate->playerIndex] = NULL;
 				removeDevice(deviceIndex);
