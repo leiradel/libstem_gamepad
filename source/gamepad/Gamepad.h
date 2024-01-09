@@ -34,6 +34,22 @@ extern "C" {
 #include <stdbool.h>
 #endif
 
+enum Gamepad_hat {
+	Gamepad_HatUp = 0x01,
+	Gamepad_HatRight = 0x02,
+	Gamepad_HatDown = 0x04,
+	Gamepad_HatLeft = 0x08
+};
+
+enum Gamepad_logLevel {
+   Gamepad_Trace,
+   Gamepad_Debug,
+   Gamepad_Info,
+   Gamepad_Warn,
+   Gamepad_Error,
+   Gamepad_Fatal
+};
+
 struct Gamepad_device {
 	// Unique device identifier for application session, starting at 0 for the first device attached and
 	// incrementing by 1 for each additional device. If a device is removed and subsequently reattached

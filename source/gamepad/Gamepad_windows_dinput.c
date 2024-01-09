@@ -985,14 +985,14 @@ static void updateAxisValue(struct Gamepad_device * device, unsigned int axisInd
 
 static void updateHatValue(struct Gamepad_device* device, unsigned int hatIndex, DWORD value, double timestamp) {
 	static const char states[] = {
-		0x01, // up
-		0x03, // up+right
-		0x02, // right
-		0x06, // right+down
-		0x04, // down
-		0x0c, // down+left
-		0x08, // left
-		0x09  // left+up
+		Gamepad_HatUp,
+		Gamepad_HatUp | Gamepad_HatRight,
+		Gamepad_HatRight,
+		Gamepad_HatRight | Gamepad_HatDown,
+		Gamepad_HatDown,
+		Gamepad_HatDown | Gamepad_HatLeft,
+		Gamepad_HatLeft,
+		Gamepad_HatLeft | Gamepad_HatUp
 	};
 
 	char lastValue;
@@ -1075,16 +1075,16 @@ void Gamepad_processEvents() {
 
 				char hat = 0;
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) {
-					hat |= 0x01;
+					hat |= Gamepad_HatUp;
 				}
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
-					hat |= 0x02;
+					hat |= Gamepad_HatRight;
 				}
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
-					hat |= 0x04;
+					hat |= Gamepad_HatDown;
 				}
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
-					hat |= 0x08;
+					hat |= Gamepad_HatLeft;
 				}
 				if (hat != device->hatStates[0] && Gamepad_hatChangeCallback != NULL) {
 					Gamepad_hatChangeCallback(device, hatIndex, hat, device->hatStates[0], now, Gamepad_axisMoveContext);
