@@ -75,4 +75,9 @@ extern void * Gamepad_buttonUpContext;
 extern void * Gamepad_axisMoveContext;
 extern void * Gamepad_hatChangeContext;
 
+extern Gamepad_logger Gamepad_loggerCallback;
+extern void * Gamepad_logContext;
+
+void Gamepad_log(enum Gamepad_logLevel level, const char* format, ...);
+
 #endif

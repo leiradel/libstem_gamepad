@@ -37,6 +37,9 @@ void * Gamepad_buttonUpContext = NULL;
 void * Gamepad_axisMoveContext = NULL;
 void * Gamepad_hatChangeContext = NULL;
 
+Gamepad_logger Gamepad_loggerCallback = NULL;
+void * Gamepad_logContext = NULL;
+
 void Gamepad_deviceAttachFunc(void (* callback)(struct Gamepad_device * device, void * context), void * context) {
 	Gamepad_deviceAttachCallback = callback;
 	Gamepad_deviceAttachContext = context;
@@ -63,6 +66,20 @@ void Gamepad_axisMoveFunc(void (* callback)(struct Gamepad_device * device, unsi
 }
 
 void Gamepad_hatChangeFunc(void (* callback)(struct Gamepad_device * device, unsigned int hatID, char value, char lastValue, double timestamp, void * context), void * context) {
-	Gamepad_hatChangeCallback = callback;
-	Gamepad_hatChangeContext = context;
+   Gamepad_hatChangeCallback = callback;
+   Gamepad_hatChangeContext = context;
+}
+
+void Gamepad_loggerFunc(Gamepad_logger callback, void * context) {
+   Gamepad_loggerCallback = callback;
+   Gamepad_logContext = context;
+}
+
+void Gamepad_log(enum Gamepad_logLevel level, const char* format, ...) {
+   if (Gamepad_loggerCallback != NULL) {
+      va_list ap;
+      va_start(ap, format);
+      Gamepad_loggerCallback(level, format, ap, Gamepad_logContext);
+      va_end(ap);
+   }
 }

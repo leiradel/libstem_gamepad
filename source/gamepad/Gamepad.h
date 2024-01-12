@@ -34,6 +34,8 @@ extern "C" {
 #include <stdbool.h>
 #endif
 
+#include <stdarg.h>
+
 enum Gamepad_hat {
 	Gamepad_HatUp = 0x01,
 	Gamepad_HatRight = 0x02,
@@ -49,6 +51,8 @@ enum Gamepad_logLevel {
    Gamepad_Error,
    Gamepad_Fatal
 };
+
+typedef void (* Gamepad_logger)(enum Gamepad_logLevel level, const char* format, va_list ap, void * context);
 
 struct Gamepad_device {
 	// Unique device identifier for application session, starting at 0 for the first device attached and
@@ -155,6 +159,9 @@ void Gamepad_axisMoveFunc(void (* callback)(struct Gamepad_device * device, unsi
    thread from which Gamepad_processEvents() was called. Calling this function with a NULL
    argument will stop any previously registered callback from being called subsequently.  */
 void Gamepad_hatChangeFunc(void (* callback)(struct Gamepad_device * device, unsigned int hatID, char value, char lastValue, double timestamp, void * context), void * context);
+
+/* Registers a logger function. */
+void Gamepad_loggerFunc(Gamepad_logger callback, void * context);
 
 #ifdef __cplusplus
 }
