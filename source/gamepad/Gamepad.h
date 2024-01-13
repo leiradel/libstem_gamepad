@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-#if defined(_MSC_VER) && (_MSC_VER <= 1600)
+#if defined(_MSC_VER) && (_MSC_VER < 1800)
 #define bool int
 #define true 1
 #define false 0
@@ -34,22 +34,168 @@ extern "C" {
 #include <stdbool.h>
 #endif
 
+#if defined(_MSC_VER) && (_MSC_VER < 1600)
+#if (_MSC_VER < 1300)
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef unsigned int uint32_t;
+#else
+typedef unsigned __int8 uint8_t;
+typedef unsigned __int16 uint16_t;
+typedef unsigned __int32 uint32_t;
+#endif
+#else
+#include <stdint.h>
+#endif
+
 #include <stdarg.h>
 
+union Gamepad_guid {
+	uint8_t data[16];
+
+	struct {
+		uint16_t bus;
+		uint16_t crc;
+		uint16_t vendor;
+		uint16_t zero1;
+		uint16_t product;
+		uint16_t zero2;
+		uint16_t version;
+		uint8_t  driver;
+		uint8_t  info;
+	}
+	standard;
+
+	struct {
+		uint16_t bus;
+		uint16_t crc;
+		uint8_t  name[12];
+	}
+	unknownVidPid;
+};
+
 enum Gamepad_hat {
-	Gamepad_HatUp = 0x01,
-	Gamepad_HatRight = 0x02,
-	Gamepad_HatDown = 0x04,
-	Gamepad_HatLeft = 0x08
+	GAMEPAD_HAT_UP = 0x01,
+	GAMEPAD_HAT_RIGHT = 0x02,
+	GAMEPAD_HAT_DOWN = 0x04,
+	GAMEPAD_HAT_LEFT = 0x08
+};
+
+enum Gamepad_bindingType {
+	GAMEPAD_BINDINGTYPE_NONE,
+	GAMEPAD_BINDINGTYPE_BUTTON,
+	GAMEPAD_BINDINGTYPE_AXIS,
+	GAMEPAD_BINDINGTYPE_HAT
+};
+
+enum Gamepad_controllerButton {
+	GAMEPAD_CONTROLLERBUTTON_SOUTH,
+	GAMEPAD_CONTROLLERBUTTON_EAST,
+	GAMEPAD_CONTROLLERBUTTON_WEST,
+	GAMEPAD_CONTROLLERBUTTON_NORTH,
+	GAMEPAD_CONTROLLERBUTTON_BACK,
+	GAMEPAD_CONTROLLERBUTTON_GUIDE,
+	GAMEPAD_CONTROLLERBUTTON_START,
+	GAMEPAD_CONTROLLERBUTTON_LEFT_STICK,
+	GAMEPAD_CONTROLLERBUTTON_RIGHT_STICK,
+	GAMEPAD_CONTROLLERBUTTON_LEFT_SHOULDER,
+	GAMEPAD_CONTROLLERBUTTON_RIGHT_SHOULDER,
+	GAMEPAD_CONTROLLERBUTTON_DPAD_UP,
+	GAMEPAD_CONTROLLERBUTTON_DPAD_DOWN,
+	GAMEPAD_CONTROLLERBUTTON_DPAD_LEFT,
+	GAMEPAD_CONTROLLERBUTTON_DPAD_RIGHT,
+	GAMEPAD_CONTROLLERBUTTON_MISC_1,
+	GAMEPAD_CONTROLLERBUTTON_RIGHT_PADDLE_1,
+	GAMEPAD_CONTROLLERBUTTON_LEFT_PADDLE_1,
+	GAMEPAD_CONTROLLERBUTTON_RIGHT_PADDLE_2,
+	GAMEPAD_CONTROLLERBUTTON_LEFT_PADDLE_2,
+	GAMEPAD_CONTROLLERBUTTON_TOUCHPAD
+};
+
+enum Gamepad_controllerAxis {
+	GAMEPAD_CONTROLLERAXIS_LEFTX,
+	GAMEPAD_CONTROLLERAXIS_LEFTY,
+	GAMEPAD_CONTROLLERAXIS_RIGHTX,
+	GAMEPAD_CONTROLLERAXIS_RIGHTY,
+	GAMEPAD_CONTROLLERAXIS_LEFT_TRIGGER,
+	GAMEPAD_CONTROLLERAXIS_RIGHT_TRIGGER
+};
+
+struct Gamepad_binding {
+	enum Gamepad_bindingType inputType;
+
+	union {
+		uint8_t button;
+
+		struct {
+			uint8_t axis;
+			float min;
+			float max;
+		}
+		axis;
+
+		struct {
+			uint8_t hat;
+			uint8_t mask;
+		} hat;
+
+	}
+	input;
+
+	enum Gamepad_bindingType outputType;
+
+	union {
+		enum Gamepad_controllerButton button;
+
+		struct {
+			enum Gamepad_controllerAxis axis;
+			float min;
+			float max;
+		} axis;
+
+	}
+	output;
+};
+
+struct Gamepad_mapping {
+	const char * name;
+	union Gamepad_guid guid;
+	struct Gamepad_binding south;
+	struct Gamepad_binding east;
+	struct Gamepad_binding west;
+	struct Gamepad_binding north;
+	struct Gamepad_binding back;
+	struct Gamepad_binding guide;
+	struct Gamepad_binding start;
+	struct Gamepad_binding leftStick;
+	struct Gamepad_binding rightStick;
+	struct Gamepad_binding leftShoulder;
+	struct Gamepad_binding rightShoulder;
+	struct Gamepad_binding dpadUp;
+	struct Gamepad_binding dpadDown;
+	struct Gamepad_binding dpadLeft;
+	struct Gamepad_binding dpadRight;
+	struct Gamepad_binding misc1;
+	struct Gamepad_binding rightPaddle1;
+	struct Gamepad_binding leftPaddle1;
+	struct Gamepad_binding rightPaddle2;
+	struct Gamepad_binding leftPaddle2;
+	struct Gamepad_binding leftX;
+	struct Gamepad_binding leftY;
+	struct Gamepad_binding rightX;
+	struct Gamepad_binding rightY;
+	struct Gamepad_binding leftTrigger;
+	struct Gamepad_binding rightTrigger;
+	struct Gamepad_binding touchpad;
 };
 
 enum Gamepad_logLevel {
-   Gamepad_Trace,
-   Gamepad_Debug,
-   Gamepad_Info,
-   Gamepad_Warn,
-   Gamepad_Error,
-   Gamepad_Fatal
+	GAMEPAD_TRACE,
+	GAMEPAD_DEBUG,
+	GAMEPAD_INFO,
+	GAMEPAD_WARN,
+	GAMEPAD_ERROR,
+	GAMEPAD_FATAL
 };
 
 typedef void (* Gamepad_logger)(enum Gamepad_logLevel level, const char* format, va_list ap, void * context);
@@ -66,6 +212,9 @@ struct Gamepad_device {
 	// USB vendor/product IDs as returned by the driver. Can be used to determine the particular model of device represented.
 	int vendorID;
 	int productID;
+
+	// SDL-compatible joystick ID to use with the controller database
+	union Gamepad_guid guid;
 	
 	// Number of axis elements belonging to the device
 	unsigned int numAxes;
@@ -89,6 +238,11 @@ struct Gamepad_device {
 	// mind your code breaking in future versions of this library.
 	void * privateData;
 };
+
+/* Initializes the controller mapping database. Call before Gamepad_init to make sure controllers
+   are correctly identified when joysticks are detected. Controller mapping is disabled is this
+   function isn't called. */
+bool Gamepad_initMappings(void);
 
 /* Initializes gamepad library and detects initial devices. Call this before any other Gamepad_*()
    function, other than callback registration functions. If you want to receive deviceAttachFunc
@@ -159,6 +313,13 @@ void Gamepad_axisMoveFunc(void (* callback)(struct Gamepad_device * device, unsi
    thread from which Gamepad_processEvents() was called. Calling this function with a NULL
    argument will stop any previously registered callback from being called subsequently.  */
 void Gamepad_hatChangeFunc(void (* callback)(struct Gamepad_device * device, unsigned int hatID, char value, char lastValue, double timestamp, void * context), void * context);
+
+/* Adds a new mapping from a descriptive string. Useful to add mappings from 
+   https://github.com/gabomdq/SDL_GameControllerDB */
+bool Gamepad_addMapping(const char* string);
+
+/* Finds a suitable controller mapping for the device. Returns NULL if none. */
+const struct Gamepad_mapping * Gamepad_findMapping(struct Gamepad_device * device);
 
 /* Registers a logger function. */
 void Gamepad_loggerFunc(Gamepad_logger callback, void * context);

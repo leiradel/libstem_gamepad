@@ -112,14 +112,14 @@ static int CreateDeviceNotification(DeviceNotificationData *data)
 	data->wincl.cbSize = sizeof (WNDCLASSEX);
 
 	if (!RegisterClassEx(&data->wincl)) {
-		Gamepad_log(Gamepad_Fatal, "Failed to create register class for joystick autodetect");
+		Gamepad_log(GAMEPAD_FATAL, "Failed to create register class for joystick autodetect");
 		CleanupDeviceNotification(data);
 		return -1;
 	}
 
 	data->messageWindow = (HWND)CreateWindowEx(0, "Message", NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
 	if (!data->messageWindow) {
-		Gamepad_log(Gamepad_Fatal, "Failed to create message window for joystick autodetect");
+		Gamepad_log(GAMEPAD_FATAL, "Failed to create message window for joystick autodetect");
 		CleanupDeviceNotification(data);
 		return -1;
 	}
@@ -131,7 +131,7 @@ static int CreateDeviceNotification(DeviceNotificationData *data)
 
 	data->hNotify = RegisterDeviceNotification(data->messageWindow, &dbh, DEVICE_NOTIFY_WINDOW_HANDLE);
 	if (!data->hNotify) {
-		Gamepad_log(Gamepad_Fatal, "Failed to create notify device for joystick autodetect");
+		Gamepad_log(GAMEPAD_FATAL, "Failed to create notify device for joystick autodetect");
 		CleanupDeviceNotification(data);
 		return -1;
 	}
@@ -233,7 +233,7 @@ void Gamepad_init() {
 			module = LoadLibrary("bin\\XInput1_3.dll");
 		}
 		if (module == NULL) {
-			Gamepad_log(Gamepad_Error, "Gamepad_init couldn't load XInput1_4.dll or XInput1_3.dll; proceeding with DInput only\n");
+			Gamepad_log(GAMEPAD_ERROR, "Gamepad_init couldn't load XInput1_4.dll or XInput1_3.dll; proceeding with DInput only\n");
 			xInputAvailable = false;
 		} else {
 			xInputAvailable = true;
@@ -247,14 +247,14 @@ void Gamepad_init() {
 		
 		module = LoadLibrary("DINPUT8.dll");
 		if (module == NULL) {
-			Gamepad_log(Gamepad_Fatal, "Gamepad_init couldn't load DINPUT8.dll\n");
+			Gamepad_log(GAMEPAD_FATAL, "Gamepad_init couldn't load DINPUT8.dll\n");
 			abort();
 		}
 		DirectInput8Create_proc = (HRESULT (WINAPI *)(HINSTANCE, DWORD, REFIID, LPVOID *, LPUNKNOWN)) GetProcAddress(module, "DirectInput8Create");
 		result = DirectInput8Create_proc(GetModuleHandle(NULL), DIRECTINPUT_VERSION, &IID_IDirectInput8, (void **) &directInputInterface, NULL);
 		
 		if (result != DI_OK) {
-			Gamepad_log(Gamepad_Warn, "DirectInput8Create returned 0x%X\n", (unsigned int) result);
+			Gamepad_log(GAMEPAD_WARN, "DirectInput8Create returned 0x%X\n", (unsigned int) result);
 		}
 		
 		inited = true;
@@ -262,10 +262,10 @@ void Gamepad_init() {
 		Gamepad_detectDevices();
 		CreateDeviceNotification(&notificationData);
 
-		Gamepad_log(Gamepad_Info, "Gamepad_init completed");
+		Gamepad_log(GAMEPAD_INFO, "Gamepad_init completed");
 	}
 	else {
-		Gamepad_log(Gamepad_Warn, "Gamepad_init already called");
+		Gamepad_log(GAMEPAD_WARN, "Gamepad_init already called");
 	}
 }
 
@@ -293,6 +293,9 @@ void Gamepad_shutdown() {
 	
 	if (inited) {
 		for (deviceIndex = 0; deviceIndex < numDevices; deviceIndex++) {
+			if (Gamepad_deviceRemoveCallback != NULL) {
+				Gamepad_deviceRemoveCallback(devices[deviceIndex], Gamepad_deviceRemoveContext);
+			}
 			disposeDevice(devices[deviceIndex]);
 		}
 		free(devices);
@@ -300,6 +303,11 @@ void Gamepad_shutdown() {
 		numDevices = 0;
 		inited = false;
 		CleanupDeviceNotification(&notificationData);
+
+		for (deviceIndex = 0; deviceIndex < Gamepad_mappingsCount; deviceIndex++) {
+			free(Gamepad_mappings[deviceIndex].name);
+		}
+		free(Gamepad_mappings);
 	}
 }
 
@@ -562,20 +570,19 @@ static BOOL CALLBACK enumAxesCallback(LPCDIDEVICEOBJECTINSTANCE instance, LPVOID
 	range.lMin = AXIS_MIN;
 	range.lMax = AXIS_MAX;
 		
-		result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_RANGE, &range.diph);
-		if (result != DI_OK) {
-			Gamepad_log(Gamepad_Warn, "IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
-		}
-
-		deadZone.diph.dwSize = sizeof(deadZone);
-		deadZone.diph.dwHeaderSize = sizeof(deadZone.diph);
-		deadZone.diph.dwObj = instance->dwType;
-		deadZone.diph.dwHow = DIPH_BYID;
-		deadZone.dwData = 0;
-		result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_DEADZONE, &deadZone.diph);
-		if (result != DI_OK) {
-			Gamepad_log(Gamepad_Warn, "IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
-		}
+	result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_RANGE, &range.diph);
+	if (result != DI_OK) {
+		Gamepad_log(GAMEPAD_WARN, "IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
+	}
+		
+	deadZone.diph.dwSize = sizeof(deadZone);
+	deadZone.diph.dwHeaderSize = sizeof(deadZone.diph);
+	deadZone.diph.dwObj = instance->dwType;
+	deadZone.diph.dwHow = DIPH_BYID;
+	deadZone.dwData = 0;
+	result = IDirectInputDevice8_SetProperty(deviceRecordPrivate->deviceInterface, DIPROP_DEADZONE, &deadZone.diph);
+	if (result != DI_OK) {
+		Gamepad_log(GAMEPAD_WARN, "IDIrectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
 	}
 	return DIENUM_CONTINUE;
 }
@@ -794,6 +801,43 @@ static int compareOffset(const void * e1, const void * e2) {
 	}
 }
 
+static uint16_t crc8(uint8_t r) {
+	uint16_t crc = 0;
+
+	for (int i = 0; i < 8; i++, r >>= 1) {
+		crc = ((crc ^ r) & 1 ? 0xa001 : 0) ^ crc >> 1;
+	}
+
+	return crc;
+}
+
+static void buildGuid(struct Gamepad_device * deviceRecord, bool isXInput) {
+	unsigned int i;
+	uint16_t crc;
+
+	if (isXInput) {
+		memset(&deviceRecord->guid, 0, sizeof(deviceRecord->guid));
+		memcpy(&deviceRecord->guid, "xinput", strlen("xinput"));
+	}
+	else {
+		crc = 0;
+
+		for (i = 0; deviceRecord->description[i] != 0; i++) {
+			crc = crc8((uint8_t)crc ^ (uint8_t)deviceRecord->description[i]) ^ crc >> 8;
+		}
+
+		deviceRecord->guid.standard.bus = 0x03; // usb
+		deviceRecord->guid.standard.crc = crc;
+		deviceRecord->guid.standard.vendor = deviceRecord->vendorID;
+		deviceRecord->guid.standard.zero1 = 0;
+		deviceRecord->guid.standard.product = deviceRecord->productID;
+		deviceRecord->guid.standard.zero2 = 0;
+		deviceRecord->guid.standard.version = 1;
+		deviceRecord->guid.standard.driver = 'h';
+		deviceRecord->guid.standard.info = 0;
+	}
+}
+
 static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVOID context) {
 	struct Gamepad_device * deviceRecord;
 	struct Gamepad_devicePrivate * deviceRecordPrivate;
@@ -816,22 +860,22 @@ static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVO
 	
 	result = IDirectInput8_CreateDevice(directInputInterface, &instance->guidInstance, &diDevice, NULL);
 	if (result != DI_OK) {
-		Gamepad_log(Gamepad_Warn, "IDirectInput8_CreateDevice returned 0x%X\n", (unsigned int) result);
+		Gamepad_log(GAMEPAD_WARN, "IDirectInput8_CreateDevice returned 0x%X\n", (unsigned int) result);
 	}
 	result = IDirectInputDevice8_QueryInterface(diDevice, &IID_IDirectInputDevice8, (LPVOID *) &di8Device);
 	if (result != DI_OK) {
-		Gamepad_log(Gamepad_Warn, "IDirectInputDevice8_QueryInterface returned 0x%X\n", (unsigned int) result);
+		Gamepad_log(GAMEPAD_WARN, "IDirectInputDevice8_QueryInterface returned 0x%X\n", (unsigned int) result);
 	}
 	IDirectInputDevice8_Release(diDevice);
 	
 	result = IDirectInputDevice8_SetCooperativeLevel(di8Device, GetActiveWindow(), DISCL_NONEXCLUSIVE | DISCL_BACKGROUND);
 	if (result != DI_OK) {
-		Gamepad_log(Gamepad_Warn, "IDirectInputDevice8_SetCooperativeLevel returned 0x%X\n", (unsigned int) result);
+		Gamepad_log(GAMEPAD_WARN, "IDirectInputDevice8_SetCooperativeLevel returned 0x%X\n", (unsigned int) result);
 	}
 	
 	result = IDirectInputDevice8_SetDataFormat(di8Device, &c_dfDIJoystick2);
 	if (result != DI_OK) {
-		Gamepad_log(Gamepad_Warn, "IDirectInputDevice8_SetDataFormat returned 0x%X\n", (unsigned int) result);
+		Gamepad_log(GAMEPAD_WARN, "IDirectInputDevice8_SetDataFormat returned 0x%X\n", (unsigned int) result);
 	}
 	
 	bufferSizeProp.diph.dwSize = sizeof(DIPROPDWORD);
@@ -843,7 +887,7 @@ static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVO
 	if (result == DI_POLLEDDEVICE) {
 		buffered = false;
 	} else if (result != DI_OK) {
-		Gamepad_log(Gamepad_Warn, "IDirectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
+		Gamepad_log(GAMEPAD_WARN, "IDirectInputDevice8_SetProperty returned 0x%X\n", (unsigned int) result);
 	}
 	
 	deviceRecord = malloc(sizeof(struct Gamepad_device));
@@ -858,6 +902,7 @@ static BOOL CALLBACK enumDevicesCallback(const DIDEVICEINSTANCE * instance, LPVO
 	deviceRecord->description = strdup(instance->tszProductName);
 	deviceRecord->vendorID = instance->guidProduct.Data1 & 0xFFFF;
 	deviceRecord->productID = instance->guidProduct.Data1 >> 16 & 0xFFFF;
+	buildGuid(deviceRecord, false);
 	deviceRecord->numAxes = 0;
 	IDirectInputDevice_EnumObjects(di8Device, countAxesCallback, deviceRecord, DIDFT_AXIS);
 	deviceRecord->numButtons = 0;
@@ -915,7 +960,7 @@ void Gamepad_detectDevices() {
 	if (s_bWindowsDeviceChanged) {
 		result = IDirectInput_EnumDevices(directInputInterface, DI8DEVCLASS_GAMECTRL, enumDevicesCallback, NULL, DIEDFL_ALLDEVICES);
 		if (result != DI_OK) {
-			Gamepad_log(Gamepad_Warn, "IDirectInput_EnumDevices returned 0x%X\n", (unsigned int) result);
+			Gamepad_log(GAMEPAD_WARN, "IDirectInput_EnumDevices returned 0x%X\n", (unsigned int) result);
 		}
 		s_bWindowsDeviceChanged = false;
 	}
@@ -938,6 +983,7 @@ void Gamepad_detectDevices() {
 				// DirectInput device enumeration. All we can do is assume all XInput devices are XBox 360 controllers.
 				deviceRecord->vendorID = 0x45E;
 				deviceRecord->productID = 0x28E;
+				buildGuid(deviceRecord, true);
 				deviceRecord->numAxes = 6;
 				deviceRecord->numButtons = 11;
 				deviceRecord->numHats = 1;
@@ -991,14 +1037,14 @@ static void updateAxisValue(struct Gamepad_device * device, unsigned int axisInd
 
 static void updateHatValue(struct Gamepad_device* device, unsigned int hatIndex, DWORD value, double timestamp) {
 	static const char states[] = {
-		Gamepad_HatUp,
-		Gamepad_HatUp | Gamepad_HatRight,
-		Gamepad_HatRight,
-		Gamepad_HatRight | Gamepad_HatDown,
-		Gamepad_HatDown,
-		Gamepad_HatDown | Gamepad_HatLeft,
-		Gamepad_HatLeft,
-		Gamepad_HatLeft | Gamepad_HatUp
+		GAMEPAD_HAT_UP,
+		GAMEPAD_HAT_UP | GAMEPAD_HAT_RIGHT,
+		GAMEPAD_HAT_RIGHT,
+		GAMEPAD_HAT_RIGHT | GAMEPAD_HAT_DOWN,
+		GAMEPAD_HAT_DOWN,
+		GAMEPAD_HAT_DOWN | GAMEPAD_HAT_LEFT,
+		GAMEPAD_HAT_LEFT,
+		GAMEPAD_HAT_LEFT | GAMEPAD_HAT_UP
 	};
 
 	char lastValue;
@@ -1081,16 +1127,16 @@ void Gamepad_processEvents() {
 
 				char hat = 0;
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) {
-					hat |= Gamepad_HatUp;
+					hat |= GAMEPAD_HAT_UP;
 				}
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
-					hat |= Gamepad_HatRight;
+					hat |= GAMEPAD_HAT_RIGHT;
 				}
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
-					hat |= Gamepad_HatDown;
+					hat |= GAMEPAD_HAT_DOWN;
 				}
 				if (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
-					hat |= Gamepad_HatLeft;
+					hat |= GAMEPAD_HAT_LEFT;
 				}
 				if (hat != device->hatStates[0] && Gamepad_hatChangeCallback != NULL) {
 					Gamepad_hatChangeCallback(device, hatIndex, hat, device->hatStates[0], now, Gamepad_axisMoveContext);

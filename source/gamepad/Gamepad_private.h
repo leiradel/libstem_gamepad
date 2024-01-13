@@ -75,6 +75,9 @@ extern void * Gamepad_buttonUpContext;
 extern void * Gamepad_axisMoveContext;
 extern void * Gamepad_hatChangeContext;
 
+extern struct Gamepad_mapping * Gamepad_mappings;
+extern unsigned int Gamepad_mappingsCount;
+
 extern Gamepad_logger Gamepad_loggerCallback;
 extern void * Gamepad_logContext;
 
